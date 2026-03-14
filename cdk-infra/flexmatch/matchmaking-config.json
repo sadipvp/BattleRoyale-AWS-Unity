@@ -1,0 +1,61 @@
+{
+  "_comment": "FlexMatch Rule Set for Tank Battle Royale — 4 players, latency-based matching",
+  "_note": "This file is for reference/documentation only. The actual rule set is embedded in gamelift-stack.ts (CfnMatchmakingRuleSet). Keep this in sync.",
+
+  "name": "TankBattleRoyale-RuleSet",
+  "ruleLanguageVersion": "2018-05-21",
+
+  "playerAttributes": [
+    {
+      "name": "latencyInMs",
+      "type": "latencyMilliseconds",
+      "_comment": "Special attribute type for latency maps. Unity sends { 'us-east-1': 45, 'eu-west-1': 120 }"
+    }
+  ],
+
+  "teams": [
+    {
+      "name": "players",
+      "minPlayers": 4,
+      "maxPlayers": 4,
+      "_comment": "Single team, free-for-all. All 4 players are on the same 'team' in the data model, but fight each other in-game."
+    }
+  ],
+
+  "rules": [
+    {
+      "name": "FastConnection",
+      "description": "Require all players to have low latency to the game server location",
+      "type": "latency",
+      "maxLatency": 200,
+      "_comment": "200ms is comfortable for a turn-based-ish tank game. Expanded below after 30s."
+    }
+  ],
+
+  "expansions": [
+    {
+      "waitTimeSeconds": 30,
+      "_comment": "After 30 seconds of searching, relax latency to 500ms to avoid long waits",
+      "claims": [
+        {
+          "rule": "FastConnection",
+          "expansion": [
+            { "maxLatency": 500 }
+          ]
+        }
+      ]
+    },
+    {
+      "waitTimeSeconds": 60,
+      "_comment": "After 60 seconds, accept any latency — ensure players always find a match",
+      "claims": [
+        {
+          "rule": "FastConnection",
+          "expansion": [
+            { "maxLatency": 1000 }
+          ]
+        }
+      ]
+    }
+  ]
+}
