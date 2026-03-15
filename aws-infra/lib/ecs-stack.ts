@@ -117,10 +117,17 @@ export class EcsStack extends cdk.Stack {
       },
     });
 
-    // grantRead must come after addContainer — CDK creates the execution role lazily
-    // once it knows the task definition has secrets to fetch.
-    jwtSecret.grantRead(authTaskDef.executionRole!);
-    props.authDbSecret.grantRead(authTaskDef.executionRole!);
+    // Explicitly grant the execution role access to both secrets.
+    // addToExecutionRolePolicy is more reliable than grantRead for imported secrets
+    // (fromSecretNameV2) because it bypasses CDK's construct-level grant resolution.
+    // Secrets Manager appends a 6-char suffix to secret names, so we use a wildcard ARN.
+    authTaskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/jwt-secret-*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/auth-db-*`,
+      ],
+    }));
 
     const authService = new ecs.FargateService(this, "AuthService", {
       cluster,
@@ -252,7 +259,12 @@ export class EcsStack extends cdk.Stack {
       },
     });
 
-    jwtSecret.grantRead(mmTaskDef.executionRole!);
+    mmTaskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/jwt-secret-*`,
+      ],
+    }));
 
     const mmService = new ecs.FargateService(this, "MatchmakingService", {
       cluster,
