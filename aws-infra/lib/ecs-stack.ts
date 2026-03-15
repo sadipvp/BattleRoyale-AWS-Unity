@@ -87,6 +87,9 @@ export class EcsStack extends cdk.Stack {
       cpu: 256,
     });
 
+    jwtSecret.grantRead(authTaskDef.executionRole!);
+    props.authDbSecret.grantRead(authTaskDef.executionRole!);
+
     authTaskDef.addContainer("auth", {
       image: ecs.ContainerImage.fromEcrRepository(props.authRepo, "latest"),
       // Static env vars (non-sensitive)
@@ -187,6 +190,8 @@ export class EcsStack extends cdk.Stack {
       memoryLimitMiB: 512,
       cpu: 256,
     });
+
+    jwtSecret.grantRead(mmTaskDef.executionRole!);
 
     // Grant matchmaking task role access to DynamoDB and GameLift.
     // FargateTaskDefinition.taskRole is typed as IRole; cast to Role to call addToPolicy.
