@@ -31,7 +31,7 @@ export class GameLiftStack extends cdk.Stack {
       "utf-8"
     );
 
-    // FlexMatch rule set: 4 players per match, expands to 2 after 15s wait
+    // FlexMatch rule set: 2-4 players per match (minPlayers: 2, maxPlayers: 4)
     const ruleSet = new gamelift.CfnMatchmakingRuleSet(this, "RuleSet", {
       name: "tank-battle-4v4-rules",
       ruleSetBody,

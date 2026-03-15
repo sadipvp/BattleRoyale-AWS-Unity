@@ -9,16 +9,5 @@
       "maxPlayers": 4
     }
   ],
-  "rules": [],
-  "expansions": [
-    {
-      "waitTimeSeconds": 15,
-      "target": [
-        {
-          "team": "players",
-          "minPlayers": 2
-        }
-      ]
-    }
-  ]
+  "rules": []
 }
