@@ -5,22 +5,21 @@ import * as path from "path";
 import { Construct } from "constructs";
 
 /**
- * GameLift stack: FlexMatch rule set and matchmaking configuration.
+ * GameLift stack: FlexMatch rule set, matchmaking configuration, and game session queue.
  *
- * Status: PARTIAL — fleet and queue are not yet configured.
- * The fleet requires a Unity headless server binary uploaded as a GameLift Build,
- * which cannot be automated until the Unity server is implemented.
+ * Status: PARTIAL — fleet is not yet configured.
+ * The fleet requires a Unity headless server binary uploaded as a GameLift Build.
  *
  * What's included:
- *   - FlexMatch MatchmakingRuleSet (4v4 with expansion to 2-player)
- *   - FlexMatch MatchmakingConfiguration (references the rule set)
+ *   - FlexMatch MatchmakingRuleSet (2-4 players per match)
+ *   - GameSessionQueue (empty — no fleet destinations yet)
+ *   - FlexMatch MatchmakingConfiguration (references rule set + queue)
  *
  * TODO (when Unity server is ready):
- *   1. Upload Unity headless build to GameLift Build
- *   2. Uncomment GameLift Fleet definition below
- *   3. Create GameSession Queue
- *   4. Add gameSessionQueueArns to MatchmakingConfiguration
- *   5. Set MOCK_GAMELIFT=false in ECS matchmaking task definition
+ *   1. Upload Unity headless build: aws gamelift upload-build ...
+ *   2. Uncomment the CfnFleet block below and fill in buildId
+ *   3. Add the fleet as a destination in the CfnGameSessionQueue
+ *   4. Set MOCK_GAMELIFT=false in the ECS matchmaking task definition
  */
 export class GameLiftStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: cdk.StackProps) {
@@ -37,9 +36,17 @@ export class GameLiftStack extends cdk.Stack {
       ruleSetBody,
     });
 
-    // FlexMatch matchmaking configuration
-    // gameSessionQueueArns is intentionally omitted until the fleet is deployed.
-    // The matchmaking service uses MOCK_GAMELIFT=true until the queue is set up.
+    // Game session queue — required by CfnMatchmakingConfiguration even before a fleet exists.
+    // No destinations for now; add the fleet once it's deployed:
+    //   destinations: [{ destinationArn: `arn:aws:gamelift:${this.region}:${this.account}:fleet/${fleet.ref}` }]
+    const queue = new gamelift.CfnGameSessionQueue(this, "Queue", {
+      name: "tank-battle-queue",
+      timeoutInSeconds: 30,
+    });
+
+    // FlexMatch matchmaking configuration.
+    // The matchmaking service uses MOCK_GAMELIFT=true so this isn't called at runtime yet.
+    // Once the fleet is deployed: set MOCK_GAMELIFT=false in the ECS matchmaking task definition.
     const matchmakingConfig = new gamelift.CfnMatchmakingConfiguration(
       this,
       "MatchmakingConfig",
@@ -48,12 +55,14 @@ export class GameLiftStack extends cdk.Stack {
         acceptanceRequired: false,
         requestTimeoutSeconds: 30,
         ruleSetName: ruleSet.name,
-        // TODO: uncomment after fleet + queue are deployed
-        // gameSessionQueueArns: [`arn:aws:gamelift:${this.region}:${this.account}:gamesessionqueue/tank-battle-queue`],
+        gameSessionQueueArns: [
+          `arn:aws:gamelift:${this.region}:${this.account}:gamesessionqueue/${queue.name}`,
+        ],
       }
     );
 
     matchmakingConfig.addDependency(ruleSet);
+    matchmakingConfig.addDependency(queue);
 
     // TODO: GameLift Fleet (requires Unity headless server build)
     // const fleet = new gamelift.CfnFleet(this, "Fleet", {
