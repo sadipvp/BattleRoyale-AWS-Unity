@@ -23,7 +23,6 @@ from shared.config import JWT_ALGORITHM
 _security = HTTPBearer()
 _api_key_header = APIKeyHeader(name="X-API-Key", scheme_name="ApiKey")
 
-
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_security),
 ) -> dict:
