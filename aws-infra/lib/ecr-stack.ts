@@ -1,6 +1,6 @@
-import * as cdk from "aws-cdk-lib";
-import * as ecr from "aws-cdk-lib/aws-ecr";
-import { Construct } from "constructs";
+import * as cdk from "aws-cdk-lib"
+import * as ecr from "aws-cdk-lib/aws-ecr"
+import { Construct } from "constructs"
 
 /**
  * ECR stack — container image repositories.
@@ -12,11 +12,11 @@ import { Construct } from "constructs";
  *   Then CI can push images, then EcsStack can reference them.
  */
 export class EcrStack extends cdk.Stack {
-  readonly authRepo: ecr.Repository;
-  readonly matchmakingRepo: ecr.Repository;
+  readonly authRepo: ecr.Repository
+  readonly matchmakingRepo: ecr.Repository
 
   constructor(scope: Construct, id: string, props: cdk.StackProps) {
-    super(scope, id, props);
+    super(scope, id, props)
 
     this.authRepo = new ecr.Repository(this, "AuthServiceRepo", {
       repositoryName: "tank-battle/auth-service",
@@ -27,7 +27,7 @@ export class EcrStack extends cdk.Stack {
           description: "Keep last 5 images",
         },
       ],
-    });
+    })
 
     this.matchmakingRepo = new ecr.Repository(this, "MatchmakingServiceRepo", {
       repositoryName: "tank-battle/matchmaking-service",
@@ -38,15 +38,15 @@ export class EcrStack extends cdk.Stack {
           description: "Keep last 5 images",
         },
       ],
-    });
+    })
 
     new cdk.CfnOutput(this, "AuthRepoUri", {
       value: this.authRepo.repositoryUri,
       description: "Auth service ECR repository URI",
-    });
+    })
     new cdk.CfnOutput(this, "MatchmakingRepoUri", {
       value: this.matchmakingRepo.repositoryUri,
       description: "Matchmaking service ECR repository URI",
-    });
+    })
   }
 }

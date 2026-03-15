@@ -8,7 +8,9 @@
     "watch": "tsc -w",
     "synth": "npx cdk synth",
     "deploy": "npx cdk deploy",
-    "destroy": "npx cdk destroy"
+    "destroy": "npx cdk destroy",
+    "format": "prettier --write \"**/*.ts\"",
+    "format:check": "prettier --check \"**/*.ts\""
   },
   "dependencies": {
     "aws-cdk-lib": "^2.130.0",
@@ -16,8 +18,9 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0",
     "aws-cdk": "^2.130.0",
-    "ts-node": "^10.9.0"
+    "prettier": "^3.8.1",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
   }
 }

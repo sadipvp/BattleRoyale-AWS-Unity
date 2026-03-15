@@ -19,8 +19,12 @@ from shared.auth import get_current_user
 from app.database import get_db
 from app.models import User
 from app.schemas import (
-    RegisterRequest, LoginRequest,
-    RegisterResponse, TokenResponse, MeResponse, HealthResponse,
+    RegisterRequest,
+    LoginRequest,
+    RegisterResponse,
+    TokenResponse,
+    MeResponse,
+    HealthResponse,
 )
 from app.jwt_utils import create_access_token
 
