@@ -98,7 +98,7 @@ async def test_me_with_valid_token(client):
 
 async def test_me_without_token(client):
     resp = await client.get("/api/v1/me")
-    assert resp.status_code == 403  # HTTPBearer returns 403 when header is missing
+    assert resp.status_code == 401
 
 
 async def test_me_with_invalid_token(client):

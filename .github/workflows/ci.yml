@@ -21,13 +21,13 @@ jobs:
           pip install -e services/shared
 
       - name: Lint shared package
-        run: flake8 services/shared/shared/ --max-line-length=100
+        run: flake8 services/shared/shared/
 
       - name: Lint auth service
-        run: flake8 services/auth/app/ --max-line-length=100
+        run: flake8 services/auth/app/
 
       - name: Lint matchmaking service
-        run: flake8 services/matchmaking/app/ --max-line-length=100
+        run: flake8 services/matchmaking/app/
 
   test:
     name: Tests

@@ -9,7 +9,7 @@ Router-level auth means every route added to protected_router is automatically
 protected — no per-endpoint auth code needed.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +18,10 @@ from passlib.hash import bcrypt
 from shared.auth import get_current_user
 from app.database import get_db
 from app.models import User
-from app.schemas import RegisterRequest, LoginRequest, RegisterResponse, TokenResponse, MeResponse, HealthResponse
+from app.schemas import (
+    RegisterRequest, LoginRequest,
+    RegisterResponse, TokenResponse, MeResponse, HealthResponse,
+)
 from app.jwt_utils import create_access_token
 
 
