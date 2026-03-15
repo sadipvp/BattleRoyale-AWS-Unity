@@ -39,10 +39,15 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: |
-          pip install pytest pytest-asyncio httpx aiosqlite
-          pip install -e services/shared
-          pip install -r services/auth/requirements.txt
+        run: pip install pytest pytest-asyncio httpx aiosqlite
+
+      - name: Install shared package
+        working-directory: services/shared
+        run: pip install -e .
+
+      - name: Install auth dependencies
+        working-directory: services/auth
+        run: pip install -r requirements.txt
       - name: Run auth tests
         env:
           JWT_SECRET: test-secret

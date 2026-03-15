@@ -37,10 +37,15 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install dependencies
-        run: |
-          pip install pytest pytest-asyncio httpx aiosqlite
-          pip install -e services/shared
-          pip install -r services/matchmaking/requirements.txt
+        run: pip install pytest pytest-asyncio httpx aiosqlite
+
+      - name: Install shared package
+        working-directory: services/shared
+        run: pip install -e .
+
+      - name: Install matchmaking dependencies
+        working-directory: services/matchmaking
+        run: pip install -r requirements.txt
       - name: Run matchmaking tests
         env:
           JWT_SECRET: test-secret

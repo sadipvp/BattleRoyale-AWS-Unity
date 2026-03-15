@@ -40,11 +40,21 @@ jobs:
           python-version: "3.12"
 
       - name: Install test dependencies
-        run: |
-          pip install pytest pytest-asyncio httpx aiosqlite
-          pip install -e services/shared
-          pip install -r services/auth/requirements.txt
-          pip install -r services/matchmaking/requirements.txt
+        run: pip install pytest pytest-asyncio httpx aiosqlite
+
+      # Install from within each service dir so that file:../shared in requirements.txt
+      # resolves to services/shared (../shared relative to services/auth), not repo root.
+      - name: Install shared package
+        working-directory: services/shared
+        run: pip install -e .
+
+      - name: Install auth dependencies
+        working-directory: services/auth
+        run: pip install -r requirements.txt
+
+      - name: Install matchmaking dependencies
+        working-directory: services/matchmaking
+        run: pip install -r requirements.txt
 
       - name: Run auth tests
         env:
