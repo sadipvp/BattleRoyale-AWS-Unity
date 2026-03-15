@@ -67,12 +67,23 @@ export class EcsStack extends cdk.Stack {
     });
 
     // ── Shared JWT secret reference ────────────────────────────────────────────
-    // This secret must be created manually in Secrets Manager before deploying.
-    // Format: {"jwt_secret": "your-random-string"}
-    const jwtSecret = secretsmanager.Secret.fromSecretNameV2(
+    // This secret must be created manually in Secrets Manager before deploying:
+    //   aws secretsmanager create-secret \
+    //     --name tank-battle/jwt-secret \
+    //     --secret-string "your-random-string"   ← plain string, NOT JSON
+    //
+    // Use fromSecretCompleteArn (not fromSecretNameV2) because ECS resolves the
+    // valueFrom field using the exact ARN in the task definition. fromSecretNameV2
+    // generates a partial ARN (without the 6-char suffix Secrets Manager appends),
+    // which ECS cannot resolve — it throws ResourceNotFoundException at task startup.
+    //
+    // To get the full ARN after creating the secret:
+    //   aws secretsmanager describe-secret --secret-id tank-battle/jwt-secret \
+    //     --query ARN --output text
+    const jwtSecret = secretsmanager.Secret.fromSecretCompleteArn(
       this,
       "JwtSecret",
-      "tank-battle/jwt-secret"
+      `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/jwt-secret-P9pw3v`
     );
 
     // ── Auth Service ───────────────────────────────────────────────────────────
@@ -98,7 +109,7 @@ export class EcsStack extends cdk.Stack {
       },
       // Secrets injected from Secrets Manager at container startup
       secrets: {
-        JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret, "jwt_secret"),
+        JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
         DB_HOST: ecs.Secret.fromSecretsManager(props.authDbSecret, "host"),
         DB_USER: ecs.Secret.fromSecretsManager(props.authDbSecret, "username"),
         DB_PASSWORD: ecs.Secret.fromSecretsManager(props.authDbSecret, "password"),
@@ -240,7 +251,7 @@ export class EcsStack extends cdk.Stack {
         MOCK_GAMELIFT: "false",  // use real GameLift in production
       },
       secrets: {
-        JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret, "jwt_secret"),
+        JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
       },
       portMappings: [{ containerPort: 8000 }],
       logging: ecs.LogDrivers.awsLogs({
