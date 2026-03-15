@@ -21,7 +21,6 @@ export class EcrStack extends cdk.Stack {
     this.authRepo = new ecr.Repository(this, "AuthServiceRepo", {
       repositoryName: "tank-battle/auth-service",
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      // Keep only the last 5 images to control storage costs
       lifecycleRules: [
         {
           maxImageCount: 5,
