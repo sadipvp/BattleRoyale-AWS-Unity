@@ -141,3 +141,37 @@ __pycache__/
 venv/
 env/
 .env
+.env.*
+*.env
+.pytest_cache/
+*.egg-info/
+dist/
+htmlcov/
+.coverage
+
+# =========================
+# Node / CDK
+# =========================
+node_modules/
+aws-infra/cdk.out/
+*.js.map
+*.d.ts
+
+# =========================
+# macOS
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# =========================
+# IDE
+# =========================
+.idea/
+*.swp
+*.swo
+
+# =========================
+# Docker
+# =========================
+.docker/

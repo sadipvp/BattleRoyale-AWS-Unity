@@ -56,10 +56,10 @@ This is a **learning project** — the team is new to Unity but has strong backe
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐       │
 │  │  PostgreSQL (RDS) │  │  DynamoDB         │  │  PostgreSQL (RDS) │      │
 │  │  users table      │  │  tickets,         │  │  matches,         │     │
-│  │                   │  │  sessions         │  │  match_players    │     │
+│  │  (auth-db)        │  │  sessions         │  │  match_players    │     │
 │  └──────────────────┘  └──────────────────┘  └──────────────────┘       │
-│   (same RDS instance,   (separate service)    (same RDS instance,        │
-│    auth schema)                                stats schema)              │
+│   (dedicated RDS        (separate service)    (dedicated RDS             │
+│    for auth service)                           for stats service)         │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,7 +94,7 @@ When Kafka is added, the Stats Service becomes a consumer — zero changes to au
 - **FlexMatch for matchmaking**: No custom matchmaking queue. GameLift's built-in FlexMatch handles player grouping with configurable rules. The ECS matchmaking service is a thin wrapper that calls FlexMatch via the AWS SDK.
 - **Custom auth (no Cognito)**: FastAPI Auth Service + PostgreSQL handles registration, login, password hashing (bcrypt), and JWT issuance directly. No AWS Cognito dependency — simpler, full control.
 - **SQL + NoSQL split (course requirement)**: PostgreSQL (RDS) for relational data — users, match history, player stats — where joins matter. DynamoDB for ephemeral/high-throughput data — matchmaking tickets, live game sessions — where you only need key-value lookups and want TTL for automatic cleanup.
-- **Shared RDS, separate schemas**: Auth and Stats services share the same RDS instance but use separate PostgreSQL schemas (`auth` and `stats`). For a course project this keeps costs down while maintaining logical separation. Each service only has credentials for its own schema.
+- **Separate RDS instances per service**: Auth and Stats services each have their own dedicated RDS PostgreSQL instance. Each service owns its entire database — no schema-level sharing, no cross-service DB credentials. This gives cleaner isolation and allows independent scaling, though it costs slightly more than sharing one instance.
 - **ALB as API gateway**: The Application Load Balancer acts as the single entry point for all client HTTP requests. The client only knows one URL (the ALB's DNS). The ALB routes requests by path to the correct ECS service. No AWS API Gateway needed — the ALB does path-based routing natively and is already required for ECS Fargate services.
 - **JWT validation at the service level**: No centralized auth middleware or Lambda authorizer. Auth logic lives in a shared Python package (`services/shared/`) imported by all services. FastAPI's router-level dependencies apply it once per router — not per endpoint. Add a new service or 50 new endpoints with zero extra auth code.
 - **ECS Fargate for backend services**: All three FastAPI services run as Docker containers on ECS Fargate. Satisfies the course Docker/ECS requirement.
@@ -111,7 +111,7 @@ When Kafka is added, the Stats Service becomes a consumer — zero changes to au
 | Auth service | FastAPI + Python 3.12 | Dockerized, runs on ECS Fargate |
 | Matchmaking service | FastAPI + Python 3.12 | Dockerized, runs on ECS Fargate, calls GameLift API |
 | Stats service | FastAPI + Python 3.12 | Dockerized, runs on ECS Fargate |
-| Database (SQL) | PostgreSQL 15 (Amazon RDS) | Users (auth schema), matches + player stats (stats schema) |
+| Database (SQL) | PostgreSQL 15 (Amazon RDS) | Auth service: dedicated `auth-db` instance (users). Stats service: dedicated `stats-db` instance (matches, player stats). |
 | Database (NoSQL) | Amazon DynamoDB | Matchmaking tickets, live sessions — key-value with TTL |
 | Matchmaking engine | GameLift FlexMatch | Rule-based matchmaking configuration |
 | Game server hosting | AWS GameLift Managed EC2 Fleet | Auto-scaling, session management, health checks |
@@ -436,15 +436,15 @@ async def record_match(payload: MatchResult):
 
 All services install the shared package (`shared @ file:../shared`), which reads `JWT_SECRET` from the environment. Auth service creates tokens; matchmaking and stats services validate them via the shared `get_current_user` dependency. No inter-service calls needed for auth.
 
-#### Database: PostgreSQL (auth schema)
+#### Database: PostgreSQL (dedicated auth-db instance)
+
+Auth service has its own RDS instance (`auth-db`). No schema prefix — it owns the entire database.
 
 ```sql
-CREATE SCHEMA auth;
-
-CREATE TABLE auth.users (
+-- SQLAlchemy creates this table automatically on service startup (create_all)
+CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) UNIQUE NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -521,7 +521,7 @@ GameSessions
 
 ---
 
-### Stats Service
+### Stats Service *(deferred — not yet implemented)*
 
 **Responsibility**: Game data only. Receives match results, stores stats, serves leaderboards and player profiles.
 
@@ -536,24 +536,25 @@ GameSessions
 
 **Note on auth for POST /api/v1/matches**: The game server (running on GameLift) calls this endpoint, not a player client. Use a shared API key (via `X-API-Key` header) rather than a player JWT. This prevents players from spoofing match results.
 
-#### Database: PostgreSQL (stats schema)
+#### Database: PostgreSQL (dedicated stats-db instance)
+
+Stats service has its own RDS instance (`stats-db`). No schema prefix — it owns the entire database. Note: `winner_id` and `user_id` are UUIDs that logically reference auth's users, but there is no foreign key constraint across services (each owns its own DB).
 
 ```sql
-CREATE SCHEMA stats;
-
-CREATE TABLE stats.matches (
+-- SQLAlchemy creates these tables automatically on service startup (create_all)
+CREATE TABLE matches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     gamelift_session_id VARCHAR(255) UNIQUE NOT NULL,
     started_at TIMESTAMP NOT NULL,
     ended_at TIMESTAMP NOT NULL,
     duration_seconds INT NOT NULL,
-    winner_id UUID NOT NULL,              -- references auth.users.id (cross-schema)
+    winner_id UUID NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE stats.match_players (
-    match_id UUID REFERENCES stats.matches(id),
-    user_id UUID NOT NULL,                -- references auth.users.id (cross-schema)
+CREATE TABLE match_players (
+    match_id UUID REFERENCES matches(id),
+    user_id UUID NOT NULL,
     kills INT DEFAULT 0,
     deaths INT DEFAULT 0,
     damage_dealt INT DEFAULT 0,
@@ -563,9 +564,9 @@ CREATE TABLE stats.match_players (
 );
 
 -- Useful indexes for leaderboard queries
-CREATE INDEX idx_match_players_user ON stats.match_players(user_id);
-CREATE INDEX idx_matches_winner ON stats.matches(winner_id);
-CREATE INDEX idx_matches_ended ON stats.matches(ended_at DESC);
+CREATE INDEX idx_match_players_user ON match_players(user_id);
+CREATE INDEX idx_matches_winner ON matches(winner_id);
+CREATE INDEX idx_matches_ended ON matches(ended_at DESC);
 ```
 
 #### Match result payload (from game server)
@@ -618,7 +619,8 @@ CREATE INDEX idx_matches_ended ON stats.matches(ended_at DESC);
 // network-stack.ts → VPC with public + private subnets, NAT gateway
 //
 // database-stack.ts:
-//   - RDS PostgreSQL in private subnet (two schemas: auth, stats)
+//   - RDS PostgreSQL "auth-db" in private subnet (dedicated to auth service)
+//   - RDS PostgreSQL "stats-db" in private subnet (dedicated to stats service)
 //   - DynamoDB: MatchmakingTickets table (PK: ticket_id, TTL: expires_at)
 //   - DynamoDB: GameSessions table (PK: session_id, TTL: expires_at)
 //
@@ -652,41 +654,56 @@ CREATE INDEX idx_matches_ended ON stats.matches(ended_at DESC);
 
 ## Local development
 
-Use `docker-compose.yml` to run locally:
+Use `docker-compose.yml` to run locally. Auth and Stats each get their own Postgres container to mirror the production separation:
 
 ```yaml
 # docker-compose.yml
 services:
-  postgres:
+  postgres-auth:
     image: postgres:15
     environment:
-      POSTGRES_DB: tankbattle
+      POSTGRES_DB: authdb
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: devpassword
     ports:
       - "5432:5432"
-    volumes:
-      - ./scripts/init-schemas.sql:/docker-entrypoint-initdb.d/init.sql
+
+  postgres-stats:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: statsdb
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5433:5432"
 
   dynamodb-local:
     image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb"]
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
 
   auth:
-    build: ./services/auth
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
     ports:
       - "8001:8000"
     environment:
-      DATABASE_URL: postgresql://dev:devpassword@postgres:5432/tankbattle
-      DATABASE_SCHEMA: auth
+      DB_HOST: postgres-auth
+      DB_PORT: 5432
+      DB_USER: dev
+      DB_PASSWORD: devpassword
+      DB_NAME: authdb
       JWT_SECRET: local-dev-secret
     depends_on:
-      - postgres
+      postgres-auth:
+        condition: service_healthy
 
   matchmaking:
-    build: ./services/matchmaking
+    build:
+      context: .
+      dockerfile: services/matchmaking/Dockerfile
     ports:
       - "8002:8000"
     environment:
@@ -697,26 +714,29 @@ services:
       DYNAMODB_TICKETS_TABLE: MatchmakingTickets
       DYNAMODB_SESSIONS_TABLE: GameSessions
       MOCK_GAMELIFT: "true"
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
     depends_on:
-      - dynamodb-local
+      dynamodb-local:
+        condition: service_healthy
 
   stats:
-    build: ./services/stats
+    build:
+      context: .
+      dockerfile: services/stats/Dockerfile
     ports:
       - "8003:8000"
     environment:
-      DATABASE_URL: postgresql://dev:devpassword@postgres:5432/tankbattle
-      DATABASE_SCHEMA: stats
+      DB_HOST: postgres-stats
+      DB_PORT: 5432
+      DB_USER: dev
+      DB_PASSWORD: devpassword
+      DB_NAME: statsdb
       JWT_SECRET: local-dev-secret
       STATS_API_KEY: local-dev-api-key
     depends_on:
-      - postgres
-```
-
-**init-schemas.sql** (mounted into PostgreSQL container):
-```sql
-CREATE SCHEMA IF NOT EXISTS auth;
-CREATE SCHEMA IF NOT EXISTS stats;
+      postgres-stats:
+        condition: service_healthy
 ```
 
 For local matchmaking testing, the matchmaking service can run in a "mock mode" that returns fake connection info without calling GameLift. Set `MOCK_GAMELIFT=true` as an env var.

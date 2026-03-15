@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install shared package and linter
+        run: |
+          pip install flake8
+          pip install -e services/shared
+
+      - name: Lint shared package
+        run: flake8 services/shared/shared/ --max-line-length=100
+
+      - name: Lint auth service
+        run: flake8 services/auth/app/ --max-line-length=100
+
+      - name: Lint matchmaking service
+        run: flake8 services/matchmaking/app/ --max-line-length=100
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest pytest-asyncio httpx aiosqlite
+          pip install -e services/shared
+          pip install -r services/auth/requirements.txt
+          pip install -r services/matchmaking/requirements.txt
+
+      - name: Run auth tests
+        env:
+          JWT_SECRET: test-secret
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: dev
+          DB_PASSWORD: devpassword
+          DB_NAME: authdb
+        run: pytest services/auth/tests/ -v
+
+      - name: Run matchmaking tests
+        env:
+          JWT_SECRET: test-secret
+          MOCK_GAMELIFT: "true"
+          AWS_ACCESS_KEY_ID: dummy
+          AWS_SECRET_ACCESS_KEY: dummy
+          AWS_REGION: us-east-1
+          DYNAMODB_TICKETS_TABLE: MatchmakingTickets
+          DYNAMODB_SESSIONS_TABLE: GameSessions
+        run: pytest services/matchmaking/tests/ -v
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build auth image
+        run: |
+          docker build \
+            -f services/auth/Dockerfile \
+            -t auth-service:ci \
+            .
+
+      - name: Build matchmaking image
+        run: |
+          docker build \
+            -f services/matchmaking/Dockerfile \
+            -t matchmaking-service:ci \
+            .

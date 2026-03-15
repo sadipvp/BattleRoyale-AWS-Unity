@@ -1,0 +1,115 @@
+# Tank Battle Royale — Local Development
+#
+# Starts auth + matchmaking services with their respective databases.
+# Stats service is not yet implemented.
+#
+# Usage:
+#   docker-compose up --build          # start everything
+#   docker-compose up auth postgres-auth  # just auth + its DB
+#
+# Service ports:
+#   Auth service:      http://localhost:8001
+#   Matchmaking:       http://localhost:8002
+#   Auth PostgreSQL:   localhost:5432
+#   Stats PostgreSQL:  localhost:5433  (reserved for future stats service)
+#   DynamoDB Local:    http://localhost:8000
+
+version: "3.9"
+
+services:
+
+  # ── Auth database ────────────────────────────────────────────────────────────
+  postgres-auth:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: authdb
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d authdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Stats database (reserved for future stats service) ───────────────────────
+  postgres-stats:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: statsdb
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: devpassword
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_stats_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d statsdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── DynamoDB Local ───────────────────────────────────────────────────────────
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    ports:
+      - "8000:8000"
+    # -inMemory: data is lost on restart (fine for local dev)
+    # -sharedDb: all regions share one file (avoids region mismatch issues)
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    healthcheck:
+      # Bash built-in TCP check — no external tools needed in the image
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/8000' 2>/dev/null && echo ok || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # ── Auth Service ─────────────────────────────────────────────────────────────
+  auth:
+    build:
+      context: .                              # repo root — needed to COPY services/shared/
+      dockerfile: services/auth/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      DB_HOST: postgres-auth
+      DB_PORT: 5432
+      DB_USER: dev
+      DB_PASSWORD: devpassword
+      DB_NAME: authdb
+      JWT_SECRET: local-dev-secret-change-in-prod
+      DEBUG: "true"
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+
+  # ── Matchmaking Service ──────────────────────────────────────────────────────
+  matchmaking:
+    build:
+      context: .
+      dockerfile: services/matchmaking/Dockerfile
+    ports:
+      - "8002:8000"
+    environment:
+      JWT_SECRET: local-dev-secret-change-in-prod
+      AWS_REGION: us-east-1
+      FLEXMATCH_CONFIG_NAME: tank-battle-4v4
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      DYNAMODB_TICKETS_TABLE: MatchmakingTickets
+      DYNAMODB_SESSIONS_TABLE: GameSessions
+      # Skip real GameLift calls — returns fake ticket/connection info immediately
+      MOCK_GAMELIFT: "true"
+      # boto3 requires credentials even for DynamoDB Local (values don't matter)
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+
+volumes:
+  postgres_auth_data:
+  postgres_stats_data:

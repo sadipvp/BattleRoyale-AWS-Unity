@@ -1,0 +1,24 @@
+{
+  "name": "tank-battle-4v4-rules",
+  "ruleLanguageVersion": "1.0",
+  "playerAttributes": [],
+  "teams": [
+    {
+      "name": "players",
+      "minPlayers": 2,
+      "maxPlayers": 4
+    }
+  ],
+  "rules": [],
+  "expansions": [
+    {
+      "waitTimeSeconds": 15,
+      "target": [
+        {
+          "team": "players",
+          "minPlayers": 2
+        }
+      ]
+    }
+  ]
+}
