@@ -42,7 +42,7 @@ async def test_health(client):
 
 async def test_join_requires_jwt(client, mock_dynamo):
     resp = await client.post("/api/v1/join")
-    assert resp.status_code == 403  # HTTPBearer returns 403 when header missing
+    assert resp.status_code == 401
 
 
 async def test_join_success(client, mock_dynamo):

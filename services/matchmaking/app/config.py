@@ -17,8 +17,9 @@ class Settings(BaseSettings):
 
     # AWS
     aws_region: str = "us-east-1"
-    aws_access_key_id: str = ""     # only needed for local dev with DynamoDB Local
-    aws_secret_access_key: str = "" # only needed for local dev with DynamoDB Local
+    # only needed for local dev with DynamoDB Local
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
 
     # GameLift FlexMatch
     flexmatch_config_name: str = "tank-battle-4v4"

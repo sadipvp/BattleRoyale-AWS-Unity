@@ -65,7 +65,8 @@ class DynamoClient:
                     BillingMode="PAY_PER_REQUEST",
                 )
             except ClientError as e:
-                if e.response["Error"]["Code"] not in ("ResourceInUseException", "ResourceNotFoundException"):
+                ignored = ("ResourceInUseException", "ResourceNotFoundException")
+                if e.response["Error"]["Code"] not in ignored:
                     # Table already exists — that's fine
                     if e.response["Error"]["Code"] != "ResourceInUseException":
                         raise

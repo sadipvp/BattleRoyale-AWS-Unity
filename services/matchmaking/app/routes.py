@@ -8,7 +8,7 @@ Flow:
   GET /match-status   → check DynamoDB cache → poll GameLift → update DynamoDB → return status
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from shared.auth import get_current_user
 from app.schemas import JoinResponse, MatchStatusResponse, HealthResponse
