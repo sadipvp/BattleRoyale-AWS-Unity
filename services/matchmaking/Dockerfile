@@ -17,6 +17,9 @@ FROM python:3.12-slim
 
 RUN useradd --no-create-home --shell /bin/false appuser
 
+# curl is needed for the container health check
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY --from=builder /root/.local /home/appuser/.local
