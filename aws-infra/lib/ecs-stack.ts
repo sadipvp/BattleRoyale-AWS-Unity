@@ -117,15 +117,12 @@ export class EcsStack extends cdk.Stack {
       },
     });
 
-    // Explicitly grant the execution role access to both secrets.
-    // addToExecutionRolePolicy is more reliable than grantRead for imported secrets
-    // (fromSecretNameV2) because it bypasses CDK's construct-level grant resolution.
-    // Secrets Manager appends a 6-char suffix to secret names, so we use a wildcard ARN.
+    // Grant execution role access to all tank-battle/* secrets.
+    // Using a prefix wildcard avoids ARN suffix matching issues with imported secrets.
     authTaskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
       actions: ["secretsmanager:GetSecretValue"],
       resources: [
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/jwt-secret-*`,
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/auth-db-*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/*`,
       ],
     }));
 
@@ -262,7 +259,7 @@ export class EcsStack extends cdk.Stack {
     mmTaskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
       actions: ["secretsmanager:GetSecretValue"],
       resources: [
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/jwt-secret-*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/*`,
       ],
     }));
 
