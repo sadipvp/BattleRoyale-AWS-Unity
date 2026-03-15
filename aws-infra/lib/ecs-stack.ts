@@ -123,8 +123,11 @@ export class EcsStack extends cdk.Stack {
       serviceName: "auth-service",
       desiredCount: 1,
       securityGroups: [props.ecsSecurityGroup],
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      assignPublicIp: false,
+      // Public subnet + assignPublicIp replaces NAT gateway (cost optimization).
+      // The task gets a public IP so it can reach ECR and AWS APIs directly.
+      // Security groups still restrict inbound to the ALB only.
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      assignPublicIp: true,
     });
 
     const authTargetGroup = new elbv2.ApplicationTargetGroup(this, "AuthTargetGroup", {
@@ -250,8 +253,10 @@ export class EcsStack extends cdk.Stack {
       serviceName: "matchmaking-service",
       desiredCount: 1,
       securityGroups: [props.ecsSecurityGroup],
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      assignPublicIp: false,
+      // Same public subnet strategy as auth — no NAT gateway.
+      // Matchmaking also needs outbound internet access to call GameLift and DynamoDB APIs.
+      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      assignPublicIp: true,
     });
 
     const mmTargetGroup = new elbv2.ApplicationTargetGroup(this, "MatchmakingTargetGroup", {

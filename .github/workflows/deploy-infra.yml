@@ -1,0 +1,80 @@
+name: Deploy — CDK Infrastructure
+
+# Triggers when CDK source or FlexMatch config changes on main.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aws-infra/**'
+
+jobs:
+  synth:
+    name: CDK Synth (validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: aws-infra/package-lock.json
+
+      - name: Install dependencies
+        working-directory: aws-infra
+        run: npm ci
+
+      - name: TypeScript compile
+        working-directory: aws-infra
+        run: npm run build
+
+      # cdk synth generates CloudFormation templates and catches logical errors
+      # (missing props, circular refs, invalid constructs) without touching AWS.
+      - name: CDK synth
+        working-directory: aws-infra
+        run: npx cdk synth --all
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+
+  deploy:
+    name: CDK Deploy
+    runs-on: ubuntu-latest
+    needs: [synth]   # only deploy if synth passes
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: aws-infra/package-lock.json
+
+      - name: Install dependencies
+        working-directory: aws-infra
+        run: npm ci
+
+      - name: TypeScript compile
+        working-directory: aws-infra
+        run: npm run build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Deploy all stacks. CDK resolves the dependency order automatically:
+      #   NetworkStack → DatabaseStack → EcrStack → EcsStack → GameLiftStack
+      # --require-approval never skips the manual approval prompt (safe for CI).
+      - name: CDK deploy all stacks
+        working-directory: aws-infra
+        run: npx cdk deploy --all --require-approval never
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ secrets.AWS_REGION }}

@@ -35,8 +35,10 @@ export class DatabaseStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id, props);
 
+    // PRIVATE_ISOLATED: no NAT gateway in this VPC, so RDS instances use truly isolated
+    // private subnets. They're only reachable from within the VPC (i.e., from Fargate tasks).
     const privateSubnets = {
-      subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+      subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
     };
 
     // ── Auth DB ────────────────────────────────────────────────────────────────

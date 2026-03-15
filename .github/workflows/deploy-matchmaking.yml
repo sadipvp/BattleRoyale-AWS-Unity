@@ -1,0 +1,124 @@
+name: Deploy — Matchmaking Service
+
+# Triggers when matchmaking service code or the shared package changes on main.
+# Only rebuilds the matchmaking image, leaving auth untouched.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/matchmaking/**'
+      - 'services/shared/**'
+
+jobs:
+  # Re-run lint, tests, and docker-build for the matchmaking service before deploying.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install flake8
+          pip install -e services/shared
+      - name: Lint shared package
+        run: flake8 services/shared/shared/ --max-line-length=100
+      - name: Lint matchmaking service
+        run: flake8 services/matchmaking/app/ --max-line-length=100
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio httpx aiosqlite
+          pip install -e services/shared
+          pip install -r services/matchmaking/requirements.txt
+      - name: Run matchmaking tests
+        env:
+          JWT_SECRET: test-secret
+          MOCK_GAMELIFT: "true"
+          AWS_ACCESS_KEY_ID: dummy
+          AWS_SECRET_ACCESS_KEY: dummy
+          AWS_REGION: us-east-1
+          DYNAMODB_TICKETS_TABLE: MatchmakingTickets
+          DYNAMODB_SESSIONS_TABLE: GameSessions
+        run: pytest services/matchmaking/tests/ -v
+
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build matchmaking image
+        run: |
+          docker build \
+            -f services/matchmaking/Dockerfile \
+            -t matchmaking-service:ci \
+            .
+
+  deploy-matchmaking:
+    name: Build, Push, Deploy Matchmaking
+    runs-on: ubuntu-latest
+    needs: [lint, test, docker-build]   # deploy only if all checks pass
+
+    permissions:
+      id-token: write   # required for OIDC token exchange
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Exchange GitHub OIDC token for temporary AWS credentials.
+      # The IAM role must trust token.actions.githubusercontent.com for this repo.
+      # No long-lived access keys stored as secrets.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Build from repo root (context: .) so the Dockerfile can COPY services/shared
+      - name: Build and push matchmaking image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            -f services/matchmaking/Dockerfile \
+            -t $ECR_REGISTRY/tank-battle/matchmaking-service:$IMAGE_TAG \
+            -t $ECR_REGISTRY/tank-battle/matchmaking-service:latest \
+            .
+          docker push $ECR_REGISTRY/tank-battle/matchmaking-service:$IMAGE_TAG
+          docker push $ECR_REGISTRY/tank-battle/matchmaking-service:latest
+
+      # Force ECS to pull the new :latest image and replace the running task
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster tank-battle-cluster \
+            --service matchmaking-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}
+
+      # Wait until the new task is healthy before marking the workflow green
+      - name: Wait for service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster tank-battle-cluster \
+            --services matchmaking-service \
+            --region ${{ secrets.AWS_REGION }}
+
+      - name: Done
+        run: echo "Matchmaking service deployed — commit ${{ github.sha }}"

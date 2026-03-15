@@ -7,9 +7,17 @@ import { Construct } from "constructs";
  *
  * Layout:
  *   - VPC across 2 AZs (us-east-1a, us-east-1b)
- *   - Public subnets: ALB and NAT gateways
- *   - Private subnets: ECS Fargate tasks and RDS instances
- *   - 1 NAT gateway (cost: ~$32/month — use 2 for production HA)
+ *   - Public subnets:          ALB + Fargate tasks (assignPublicIp: true)
+ *   - Private isolated subnets: RDS instances (no internet access needed)
+ *   - NO NAT Gateway (cost optimization: saves ~$32/month for this course project)
+ *
+ * Why Fargate in public subnets?
+ *   Without a NAT gateway, tasks in private subnets have no route to the internet and
+ *   cannot pull images from ECR or call AWS APIs (GameLift, DynamoDB). Moving Fargate to
+ *   public subnets with assignPublicIp: true gives them direct internet access at no extra
+ *   cost. Security groups still ensure only the ALB can reach containers on port 8000.
+ *   In production, you would keep Fargate in private subnets behind a NAT gateway (or VPC
+ *   endpoints) to avoid exposing container ENIs to the public internet.
  *
  * Security group rules enforce least-privilege:
  *   - ALB accepts inbound 80/443 from anywhere
@@ -25,11 +33,11 @@ export class NetworkStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: cdk.StackProps) {
     super(scope, id, props);
 
-    // VPC with public + private subnets across 2 AZs
-    // natGateways: 1 reduces cost for a course project (no AZ redundancy for NAT)
+    // VPC with public subnets (Fargate + ALB) and isolated private subnets (RDS) across 2 AZs.
+    // natGateways: 0 — no NAT gateway saves ~$32/month. Fargate uses assignPublicIp: true instead.
     this.vpc = new ec2.Vpc(this, "Vpc", {
       maxAzs: 2,
-      natGateways: 1,
+      natGateways: 0,
       subnetConfiguration: [
         {
           name: "public",
@@ -37,8 +45,10 @@ export class NetworkStack extends cdk.Stack {
           cidrMask: 24,
         },
         {
+          // RDS instances live here — no internet access required.
+          // PRIVATE_ISOLATED = private subnet with no NAT route (truly air-gapped from internet).
           name: "private",
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
           cidrMask: 24,
         },
       ],

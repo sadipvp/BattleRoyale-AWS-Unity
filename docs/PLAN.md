@@ -98,6 +98,7 @@ When Kafka is added, the Stats Service becomes a consumer — zero changes to au
 - **ALB as API gateway**: The Application Load Balancer acts as the single entry point for all client HTTP requests. The client only knows one URL (the ALB's DNS). The ALB routes requests by path to the correct ECS service. No AWS API Gateway needed — the ALB does path-based routing natively and is already required for ECS Fargate services.
 - **JWT validation at the service level**: No centralized auth middleware or Lambda authorizer. Auth logic lives in a shared Python package (`services/shared/`) imported by all services. FastAPI's router-level dependencies apply it once per router — not per endpoint. Add a new service or 50 new endpoints with zero extra auth code.
 - **ECS Fargate for backend services**: All three FastAPI services run as Docker containers on ECS Fargate. Satisfies the course Docker/ECS requirement.
+- **Public subnets for Fargate (cost optimization)**: Fargate tasks run in public subnets with `assignPublicIp: true` instead of private subnets behind a NAT Gateway. NAT Gateway costs ~$32/month — too expensive for a course project. The containers are still protected by security groups: only the ALB can reach them on port 8000. In a production system, services would run in private subnets behind a NAT Gateway (or VPC endpoints) to avoid exposing containers to the public internet. RDS instances stay in private subnets regardless — they have no need for internet access.
 - **GameLift for game servers**: The dedicated Unity headless servers run on GameLift managed EC2 fleets (NOT on ECS). GameLift handles auto-scaling, session management, health checks, and server lifecycle — things that would take weeks to build on ECS.
 - **Polling over SNS**: For simplicity, the client polls the matchmaking service for match status instead of setting up an SNS → SQS → websocket notification pipeline. Polling every 2-3 seconds is fine for a course project.
 
@@ -616,7 +617,11 @@ CREATE INDEX idx_matches_ended ON matches(ended_at DESC);
 ### CDK infrastructure overview
 
 ```typescript
-// network-stack.ts → VPC with public + private subnets, NAT gateway
+// network-stack.ts → VPC with public subnets (for Fargate) + private subnets (for RDS).
+//                    NO NAT Gateway (cost optimization — saves ~$32/mo).
+//                    Fargate tasks use assignPublicIp: true so they can reach ECR, DynamoDB,
+//                    and GameLift API directly over the internet.
+//                    RDS instances stay in private subnets — accessed via VPC-internal networking only.
 //
 // database-stack.ts:
 //   - RDS PostgreSQL "auth-db" in private subnet (dedicated to auth service)
@@ -631,7 +636,8 @@ CREATE INDEX idx_matches_ended ON matches(ended_at DESC);
 //     - Auth: DB_URL (auth schema), JWT_SECRET
 //     - Matchmaking: JWT_SECRET, AWS_REGION, FLEXMATCH_CONFIG_NAME, table names
 //     - Stats: DB_URL (stats schema), JWT_SECRET, STATS_API_KEY
-//   - 3x Fargate Services
+//   - 3x Fargate Services (assignPublicIp: ENABLED — required because tasks run in public
+//     subnets without a NAT Gateway; this is how they pull images from ECR and reach AWS APIs)
 //   - ALB (single entry point for all HTTP traffic):
 //     - Path-based routing rules:
 //       /api/v1/register, /api/v1/login, /api/v1/me       → Auth target group
@@ -740,6 +746,74 @@ services:
 ```
 
 For local matchmaking testing, the matchmaking service can run in a "mock mode" that returns fake connection info without calling GameLift. Set `MOCK_GAMELIFT=true` as an env var.
+
+## Cost estimate (2-month project budget)
+
+All costs are for `us-east-1`. The project runs on **$200 in AWS credits**.
+
+| Service | Details | Monthly | × 2 months |
+|---------|---------|---------|-----------|
+| ALB | Application Load Balancer (1x, always on) | ~$18 | $36 |
+| Fargate — auth | 0.25 vCPU + 0.5 GB, 24/7 | ~$10 | $20 |
+| Fargate — matchmaking | 0.25 vCPU + 0.5 GB, 24/7 | ~$10 | $20 |
+| RDS auth-db | db.t3.micro, PostgreSQL (free tier eligible) | $0 | $0 |
+| RDS stats-db | db.t3.micro, PostgreSQL (NOT free tier — 2nd instance) | ~$15 | $30 |
+| DynamoDB | Free tier (25 GB storage, 25 WCU/RCU) | $0 | $0 |
+| GameLift | Free tier (125 hours/month EC2, 100 GB data transfer) | $0 | $0 |
+| ECR | Free tier (500 MB storage) | $0 | $0 |
+| NAT Gateway | **Eliminated** — Fargate runs in public subnets instead | $0 | $0 |
+| **Total** | | **~$53/mo** | **~$106** |
+
+Fits within $200 AWS credits with ~$94 buffer. Set up an **AWS Budget alert at $50** to get notified at the halfway point.
+
+> **Why two separate RDS instances cost more**: Only one RDS db.t3.micro qualifies for the 12-month free tier per AWS account. The second instance (stats-db) is billed at ~$15/month. Sharing one instance would save $30 over the project, but breaks the service isolation design.
+
+## GitHub Actions CI/CD
+
+Push to `main` → GitHub Actions builds the Docker image → pushes to ECR → forces a new ECS deployment. One workflow per service, triggered by path filter.
+
+### Workflow trigger strategy
+
+```yaml
+# .github/workflows/deploy-auth.yml  (mirror pattern for matchmaking and stats)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/auth/**'
+      - 'services/shared/**'   # shared package change also triggers auth rebuild
+```
+
+Each service has its own workflow file triggered by its own path filter. A change to `services/auth/**` only rebuilds and redeploys the auth service — it doesn't touch matchmaking or stats.
+
+### Deployment steps (per workflow)
+
+1. `aws ecr get-login-password` → authenticate Docker to ECR
+2. `docker build -t auth-service .` → build image from `services/auth/Dockerfile`
+3. `docker push <account>.dkr.ecr.us-east-1.amazonaws.com/auth-service:latest`
+4. `aws ecs update-service --force-new-deployment` → ECS pulls the new image and rolls it out
+
+### Required GitHub secrets
+
+| Secret | Value |
+|--------|-------|
+| `AWS_ACCESS_KEY_ID` | IAM user with ECR push + ECS update-service permissions |
+| `AWS_SECRET_ACCESS_KEY` | Same IAM user |
+| `AWS_REGION` | `us-east-1` |
+| `ECR_REGISTRY` | `<account-id>.dkr.ecr.us-east-1.amazonaws.com` |
+
+### GitHub Actions free tier
+
+2,000 minutes/month for private repos. A typical build + push takes ~2-3 minutes. At ~5 deploys/day that's ~300-450 min/month — well within the free tier.
+
+### AWS Budget alert setup
+
+In the AWS Console → Billing → Budgets → Create Budget:
+- Budget amount: $50
+- Alert threshold: 100% of budgeted amount
+- Notification: email
+
+This fires when spending hits $50, giving early warning before the $200 credits are half gone.
 
 ## Getting started
 
