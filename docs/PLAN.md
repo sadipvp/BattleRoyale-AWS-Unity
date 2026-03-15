@@ -11,56 +11,58 @@ This is a **learning project** — the team is new to Unity but has strong backe
 ## Architecture
 
 ```
-                        ┌─────────────────────────────────┐
-                        │     GameLift + FlexMatch         │
-                        │  (matchmaking + fleet mgmt)      │
-                        └──────────┬──────────────────────┘
-                                   │ provisions server,
-                                   │ returns IP + port
-                                   ▼
-                        ┌─────────────────────────────────┐
-                        │     Dedicated Game Server        │
-                        │   (Unity Headless on GameLift)   │
-                        └────▲────────────────────┬───────┘
-                             │                    │
-              Direct UDP     │                    │ HTTP POST /stats/matches
-              (gameplay)     │                    │ (when match ends)
-                             │                    │
-┌────────────────────────────┼────────────────────┼───────────────────────┐
-│                            │                    │                        │
-│  Unity Client ─────────────┘                    │                        │
-│       │                                         │                        │
-│       │ HTTP (all requests go to /api/v1/*)     │                        │
-│       ▼                                         ▼                        │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │  ALB (Application Load Balancer) — acts as API gateway              │ │
-│  │  routes by path:                                                     │ │
-│  │    /api/v1/register, /api/v1/login, /api/v1/me  → Auth Service      │ │
-│  │    /api/v1/join, /api/v1/match-status/*          → Matchmaking Svc  │ │
-│  │    /api/v1/matches, /api/v1/players/*, /api/v1/leaderboard → Stats  │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
-│       │                          │                         │              │
-│       ▼                          ▼                         ▼              │
-│  ┌──────────────────── ECS Fargate (Docker) ──────────────────────────┐ │
-│  │                                                                     │ │
-│  │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │ │
-│  │  │  Auth Service     │  │  Matchmaking     │  │  Stats Service   │  │ │
-│  │  │  register, login  │  │  Service         │  │  match results,  │  │ │
-│  │  │  user profile     │  │  join, poll      │  │  player stats,   │  │ │
-│  │  │  [no JWT needed]  │  │  [JWT required]  │  │  leaderboard     │  │ │
-│  │  └────────┬──────────┘  └────────┬─────────┘  └────────┬─────────┘  │ │
-│  │           │                      │                      │            │ │
-│  └───────────┼──────────────────────┼──────────────────────┼────────────┘ │
-│              │                      │                      │              │
-│              ▼                      ▼                      ▼              │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐       │
-│  │  PostgreSQL (RDS) │  │  DynamoDB         │  │  PostgreSQL (RDS) │      │
-│  │  users table      │  │  tickets,         │  │  matches,         │     │
-│  │  (auth-db)        │  │  sessions         │  │  match_players    │     │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘       │
-│   (dedicated RDS        (separate service)    (dedicated RDS             │
-│    for auth service)                           for stats service)         │
-└──────────────────────────────────────────────────────────────────────────┘
+                                        INTERNET
+  ┌───────────────────────────────────────────────────────────────────────────┐
+  │                                                                           │
+  │   Unity Client              GameLift + FlexMatch (AWS public endpoint)   │
+  │      │  │                         ▲              │                        │
+  │      │  │ Direct UDP              │ StartMatchmaking / DescribeMatchmaking │
+  │      │  │ (gameplay)              │              │ provisions server,     │
+  │      │  │                         │              │ returns IP + port      │
+  │      │  └─────────────────────────┼──────────────┼──────────────────┐    │
+  │      │                            │              ▼                   │    │
+  │      │                  ┌──────────────────────────────────┐         │    │
+  │      │                  │     Dedicated Game Server         │         │    │
+  │      │                  │   (Unity Headless on GameLift)    │         │    │
+  │      │                  └─────────────────┬────────────────┘         │    │
+  │      │ HTTP /api/v1/*                      │ HTTP POST /api/v1/matches │    │
+  │      ▼                                     ▼                         │    │
+  └──────────────────────────────────────────────────────────────────────┼───┘
+                                                                          │
+  ┌─── AWS VPC ─────────────────────────────────────────────────────────┼───┐
+  │                                                                       │   │
+  │  ┌─── Public Subnets ──────────────────────────────────────────────┐ │   │
+  │  │                                                                  │ │   │
+  │  │  ┌────────────────────────────────────────────────────────────┐ │ │   │
+  │  │  │  ALB (internet-facing)                                      │ │ │   │
+  │  │  │  /api/v1/register, /login, /me     → Auth Service          │ │ │   │
+  │  │  │  /api/v1/join, /match-status/*     → Matchmaking Service   │◀┘ │   │
+  │  │  │  /api/v1/matches, /players/*, /leaderboard → Stats Service │   │   │
+  │  │  └──────────┬─────────────────┬──────────────────┬────────────┘   │   │
+  │  │             │                 │                  │                 │   │
+  │  │             ▼                 ▼                  ▼                 │   │
+  │  │  ┌──────────────┐  ┌──────────────────┐  ┌──────────────┐         │   │
+  │  │  │ Auth Service │  │ Matchmaking Svc  │  │ Stats Service│         │   │
+  │  │  │  (Fargate)   │  │   (Fargate)      │  │  (Fargate)   │         │   │
+  │  │  │  public IP * │  │   public IP *    │  │  public IP * │         │   │
+  │  │  └──────┬───────┘  └───────┬──────────┘  └──────┬───────┘         │   │
+  │  │         │                  │ outbound internet   │                 │   │
+  │  │         │                  ├──→ GameLift API      │                 │   │
+  │  │         │                  └──→ DynamoDB API       │                 │   │
+  │  └─────────┼──────────────────────────────────────────┼───────────────┘   │
+  │            │                                           │                   │
+  │  ┌─── Private Subnets (isolated, no internet) ────────┼───────────────┐   │
+  │  │         │                                           │               │   │
+  │  │  ┌──────────────┐  ┌──────────────────┐  ┌─────────────────┐       │   │
+  │  │  │  RDS auth-db │  │    DynamoDB      │  │  RDS stats-db   │       │   │
+  │  │  │ (PostgreSQL) │  │tickets, sessions │  │  (PostgreSQL)   │       │   │
+  │  │  └──────────────┘  └──────────────────┘  └─────────────────┘       │   │
+  │  └───────────────────────────────────────────────────────────────────┘   │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+  * Fargate tasks have public IPs (no NAT Gateway — cost optimization).
+    Inbound: blocked by security groups, only the ALB can reach port 8000.
+    Outbound: direct internet access to reach ECR, GameLift API, DynamoDB API.
 ```
 
 ### Flow

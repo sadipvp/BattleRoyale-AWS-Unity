@@ -87,9 +87,6 @@ export class EcsStack extends cdk.Stack {
       cpu: 256,
     });
 
-    jwtSecret.grantRead(authTaskDef.executionRole!);
-    props.authDbSecret.grantRead(authTaskDef.executionRole!);
-
     authTaskDef.addContainer("auth", {
       image: ecs.ContainerImage.fromEcrRepository(props.authRepo, "latest"),
       // Static env vars (non-sensitive)
@@ -119,6 +116,11 @@ export class EcsStack extends cdk.Stack {
         startPeriod: cdk.Duration.seconds(60),
       },
     });
+
+    // grantRead must come after addContainer — CDK creates the execution role lazily
+    // once it knows the task definition has secrets to fetch.
+    jwtSecret.grantRead(authTaskDef.executionRole!);
+    props.authDbSecret.grantRead(authTaskDef.executionRole!);
 
     const authService = new ecs.FargateService(this, "AuthService", {
       cluster,
@@ -191,8 +193,6 @@ export class EcsStack extends cdk.Stack {
       cpu: 256,
     });
 
-    jwtSecret.grantRead(mmTaskDef.executionRole!);
-
     // Grant matchmaking task role access to DynamoDB and GameLift.
     // FargateTaskDefinition.taskRole is typed as IRole; cast to Role to call addToPolicy.
     const mmRole = mmTaskDef.taskRole as iam.Role;
@@ -251,6 +251,8 @@ export class EcsStack extends cdk.Stack {
         startPeriod: cdk.Duration.seconds(30),
       },
     });
+
+    jwtSecret.grantRead(mmTaskDef.executionRole!);
 
     const mmService = new ecs.FargateService(this, "MatchmakingService", {
       cluster,
