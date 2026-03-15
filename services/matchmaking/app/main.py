@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import settings
 from app.dynamo_client import dynamo
 from app.routes import public_router, protected_router
 
@@ -13,12 +14,15 @@ from app.routes import public_router, protected_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    On startup, ensure DynamoDB tables exist.
+    On startup, ensure DynamoDB tables exist — local dev only.
 
-    On real AWS, CDK creates the tables before the service starts.
-    On DynamoDB Local (docker-compose), this creates them on first run.
+    On real AWS, CDK creates the tables before the service starts and the
+    task role has no dynamodb:CreateTable permission (nor should it).
+    On DynamoDB Local (docker-compose), DYNAMODB_ENDPOINT is set, so we
+    create the tables on first run.
     """
-    await dynamo.ensure_tables_exist()
+    if settings.dynamodb_endpoint:
+        await dynamo.ensure_tables_exist()
     yield
 
 
