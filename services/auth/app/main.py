@@ -37,7 +37,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],       # tighten to ALB DNS in production if desired
+    allow_origins=["*"],  # tighten to ALB DNS in production if desired
     allow_methods=["*"],
     allow_headers=["*"],
 )

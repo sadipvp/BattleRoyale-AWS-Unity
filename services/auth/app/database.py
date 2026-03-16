@@ -13,19 +13,20 @@ from app.config import settings
 
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,       # logs all SQL when debug=True
-    pool_pre_ping=True,        # test connections before use
+    echo=settings.debug,  # logs all SQL when debug=True
+    pool_pre_ping=True,  # test connections before use
 )
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
-    expire_on_commit=False,    # keep objects usable after commit
+    expire_on_commit=False,  # keep objects usable after commit
 )
 
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM models."""
+
     pass
 
 

@@ -1,22 +1,22 @@
-import * as cdk from "aws-cdk-lib";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
-import * as ecs from "aws-cdk-lib/aws-ecs";
-import * as ecr from "aws-cdk-lib/aws-ecr";
-import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
-import * as iam from "aws-cdk-lib/aws-iam";
-import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import * as logs from "aws-cdk-lib/aws-logs";
-import { Construct } from "constructs";
+import * as cdk from "aws-cdk-lib"
+import * as ec2 from "aws-cdk-lib/aws-ec2"
+import * as ecs from "aws-cdk-lib/aws-ecs"
+import * as ecr from "aws-cdk-lib/aws-ecr"
+import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2"
+import * as iam from "aws-cdk-lib/aws-iam"
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager"
+import * as logs from "aws-cdk-lib/aws-logs"
+import { Construct } from "constructs"
 
 interface EcsStackProps extends cdk.StackProps {
-  vpc: ec2.Vpc;
-  albSecurityGroup: ec2.SecurityGroup;
-  ecsSecurityGroup: ec2.SecurityGroup;
-  authDbSecret: secretsmanager.ISecret;
-  matchmakingTicketsTableName: string;
-  matchmakingSessionsTableName: string;
-  authRepo: ecr.Repository;
-  matchmakingRepo: ecr.Repository;
+  vpc: ec2.Vpc
+  albSecurityGroup: ec2.SecurityGroup
+  ecsSecurityGroup: ec2.SecurityGroup
+  authDbSecret: secretsmanager.ISecret
+  matchmakingTicketsTableName: string
+  matchmakingSessionsTableName: string
+  authRepo: ecr.Repository
+  matchmakingRepo: ecr.Repository
 }
 
 /**
@@ -40,14 +40,14 @@ interface EcsStackProps extends cdk.StackProps {
  */
 export class EcsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: EcsStackProps) {
-    super(scope, id, props);
+    super(scope, id, props)
 
     // ── ECS Cluster ────────────────────────────────────────────────────────────
     const cluster = new ecs.Cluster(this, "Cluster", {
       vpc: props.vpc,
       clusterName: "tank-battle-cluster",
       containerInsights: true,
-    });
+    })
 
     // ── ALB ────────────────────────────────────────────────────────────────────
     const alb = new elbv2.ApplicationLoadBalancer(this, "Alb", {
@@ -55,7 +55,7 @@ export class EcsStack extends cdk.Stack {
       internetFacing: true,
       securityGroup: props.albSecurityGroup,
       loadBalancerName: "tank-battle-alb",
-    });
+    })
 
     const listener = alb.addListener("HttpListener", {
       port: 80,
@@ -64,7 +64,7 @@ export class EcsStack extends cdk.Stack {
         contentType: "text/plain",
         messageBody: "Not found",
       }),
-    });
+    })
 
     // ── Shared JWT secret reference ────────────────────────────────────────────
     // This secret must be created manually in Secrets Manager before deploying:
@@ -84,19 +84,19 @@ export class EcsStack extends cdk.Stack {
       this,
       "JwtSecret",
       `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/jwt-secret-P9pw3v`
-    );
+    )
 
     // ── Auth Service ───────────────────────────────────────────────────────────
     const authLogGroup = new logs.LogGroup(this, "AuthLogGroup", {
       logGroupName: "/ecs/tank-battle/auth",
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    })
 
     const authTaskDef = new ecs.FargateTaskDefinition(this, "AuthTaskDef", {
       memoryLimitMiB: 512,
       cpu: 256,
-    });
+    })
 
     authTaskDef.addContainer("auth", {
       image: ecs.ContainerImage.fromEcrRepository(props.authRepo, "latest"),
@@ -126,16 +126,16 @@ export class EcsStack extends cdk.Stack {
         retries: 3,
         startPeriod: cdk.Duration.seconds(60),
       },
-    });
+    })
 
     // Grant execution role access to all tank-battle/* secrets.
     // Using a prefix wildcard avoids ARN suffix matching issues with imported secrets.
-    authTaskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/*`,
-      ],
-    }));
+    authTaskDef.addToExecutionRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/*`],
+      })
+    )
 
     const authService = new ecs.FargateService(this, "AuthService", {
       cluster,
@@ -148,7 +148,7 @@ export class EcsStack extends cdk.Stack {
       // Security groups still restrict inbound to the ALB only.
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       assignPublicIp: true,
-    });
+    })
 
     const authTargetGroup = new elbv2.ApplicationTargetGroup(this, "AuthTargetGroup", {
       vpc: props.vpc,
@@ -161,56 +161,56 @@ export class EcsStack extends cdk.Stack {
         healthyHttpCodes: "200",
       },
       deregistrationDelay: cdk.Duration.seconds(30),
-    });
+    })
 
-    authService.attachToApplicationTargetGroup(authTargetGroup);
+    authService.attachToApplicationTargetGroup(authTargetGroup)
 
     // Auth routing rules
     listener.addAction("AuthRegister", {
       priority: 10,
       conditions: [elbv2.ListenerCondition.pathPatterns(["/api/v1/register"])],
       action: elbv2.ListenerAction.forward([authTargetGroup]),
-    });
+    })
     listener.addAction("AuthLogin", {
       priority: 11,
       conditions: [elbv2.ListenerCondition.pathPatterns(["/api/v1/login"])],
       action: elbv2.ListenerAction.forward([authTargetGroup]),
-    });
+    })
     listener.addAction("AuthMe", {
       priority: 12,
       conditions: [elbv2.ListenerCondition.pathPatterns(["/api/v1/me"])],
       action: elbv2.ListenerAction.forward([authTargetGroup]),
-    });
+    })
     listener.addAction("AuthHealth", {
       priority: 13,
       conditions: [elbv2.ListenerCondition.pathPatterns(["/api/v1/health"])],
       action: elbv2.ListenerAction.forward([authTargetGroup]),
-    });
+    })
 
     // Auth auto-scaling
     const authScaling = authService.autoScaleTaskCount({
       minCapacity: 1,
       maxCapacity: 3,
-    });
+    })
     authScaling.scaleOnCpuUtilization("AuthCpuScaling", {
       targetUtilizationPercent: 70,
-    });
+    })
 
     // ── Matchmaking Service ────────────────────────────────────────────────────
     const mmLogGroup = new logs.LogGroup(this, "MatchmakingLogGroup", {
       logGroupName: "/ecs/tank-battle/matchmaking",
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    })
 
     const mmTaskDef = new ecs.FargateTaskDefinition(this, "MatchmakingTaskDef", {
       memoryLimitMiB: 512,
       cpu: 256,
-    });
+    })
 
     // Grant matchmaking task role access to DynamoDB and GameLift.
     // FargateTaskDefinition.taskRole is typed as IRole; cast to Role to call addToPolicy.
-    const mmRole = mmTaskDef.taskRole as iam.Role;
+    const mmRole = mmTaskDef.taskRole as iam.Role
 
     mmRole.addToPolicy(
       new iam.PolicyStatement({
@@ -227,7 +227,7 @@ export class EcsStack extends cdk.Stack {
           `arn:aws:dynamodb:${this.region}:${this.account}:table/${props.matchmakingSessionsTableName}`,
         ],
       })
-    );
+    )
 
     mmRole.addToPolicy(
       new iam.PolicyStatement({
@@ -239,7 +239,7 @@ export class EcsStack extends cdk.Stack {
         ],
         resources: ["*"], // GameLift FlexMatch resources don't support resource-level perms
       })
-    );
+    )
 
     mmTaskDef.addContainer("matchmaking", {
       image: ecs.ContainerImage.fromEcrRepository(props.matchmakingRepo, "latest"),
@@ -248,7 +248,7 @@ export class EcsStack extends cdk.Stack {
         FLEXMATCH_CONFIG_NAME: "tank-battle-4v4",
         DYNAMODB_TICKETS_TABLE: props.matchmakingTicketsTableName,
         DYNAMODB_SESSIONS_TABLE: props.matchmakingSessionsTableName,
-        MOCK_GAMELIFT: "false",  // use real GameLift in production
+        MOCK_GAMELIFT: "true", // use real GameLift in production
       },
       secrets: {
         JWT_SECRET: ecs.Secret.fromSecretsManager(jwtSecret),
@@ -265,14 +265,14 @@ export class EcsStack extends cdk.Stack {
         retries: 3,
         startPeriod: cdk.Duration.seconds(30),
       },
-    });
+    })
 
-    mmTaskDef.addToExecutionRolePolicy(new iam.PolicyStatement({
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [
-        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/*`,
-      ],
-    }));
+    mmTaskDef.addToExecutionRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:tank-battle/*`],
+      })
+    )
 
     const mmService = new ecs.FargateService(this, "MatchmakingService", {
       cluster,
@@ -284,7 +284,7 @@ export class EcsStack extends cdk.Stack {
       // Matchmaking also needs outbound internet access to call GameLift and DynamoDB APIs.
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
       assignPublicIp: true,
-    });
+    })
 
     const mmTargetGroup = new elbv2.ApplicationTargetGroup(this, "MatchmakingTargetGroup", {
       vpc: props.vpc,
@@ -297,35 +297,35 @@ export class EcsStack extends cdk.Stack {
         healthyHttpCodes: "200",
       },
       deregistrationDelay: cdk.Duration.seconds(30),
-    });
+    })
 
-    mmService.attachToApplicationTargetGroup(mmTargetGroup);
+    mmService.attachToApplicationTargetGroup(mmTargetGroup)
 
     // Matchmaking routing rules
     listener.addAction("MatchmakingJoin", {
       priority: 20,
       conditions: [elbv2.ListenerCondition.pathPatterns(["/api/v1/join"])],
       action: elbv2.ListenerAction.forward([mmTargetGroup]),
-    });
+    })
     listener.addAction("MatchmakingStatus", {
       priority: 21,
       conditions: [elbv2.ListenerCondition.pathPatterns(["/api/v1/match-status/*"])],
       action: elbv2.ListenerAction.forward([mmTargetGroup]),
-    });
+    })
 
     // Matchmaking auto-scaling
     const mmScaling = mmService.autoScaleTaskCount({
       minCapacity: 1,
       maxCapacity: 3,
-    });
+    })
     mmScaling.scaleOnCpuUtilization("MatchmakingCpuScaling", {
       targetUtilizationPercent: 70,
-    });
+    })
 
     // ── Outputs ────────────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, "AlbDnsName", {
       value: alb.loadBalancerDnsName,
       description: "ALB DNS name — use this as the API base URL in the Unity client",
-    });
+    })
   }
 }

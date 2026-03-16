@@ -1,6 +1,6 @@
-import * as cdk from "aws-cdk-lib";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
-import { Construct } from "constructs";
+import * as cdk from "aws-cdk-lib"
+import * as ec2 from "aws-cdk-lib/aws-ec2"
+import { Construct } from "constructs"
 
 /**
  * Network stack: VPC, subnets, security groups.
@@ -25,13 +25,13 @@ import { Construct } from "constructs";
  *   - RDS only accepts inbound from ECS tasks (port 5432)
  */
 export class NetworkStack extends cdk.Stack {
-  readonly vpc: ec2.Vpc;
-  readonly albSecurityGroup: ec2.SecurityGroup;
-  readonly ecsSecurityGroup: ec2.SecurityGroup;
-  readonly dbSecurityGroup: ec2.SecurityGroup;
+  readonly vpc: ec2.Vpc
+  readonly albSecurityGroup: ec2.SecurityGroup
+  readonly ecsSecurityGroup: ec2.SecurityGroup
+  readonly dbSecurityGroup: ec2.SecurityGroup
 
   constructor(scope: Construct, id: string, props: cdk.StackProps) {
-    super(scope, id, props);
+    super(scope, id, props)
 
     // VPC with public subnets (Fargate + ALB) and isolated private subnets (RDS) across 2 AZs.
     // natGateways: 0 — no NAT gateway saves ~$32/month. Fargate uses assignPublicIp: true instead.
@@ -52,47 +52,47 @@ export class NetworkStack extends cdk.Stack {
           cidrMask: 24,
         },
       ],
-    });
+    })
 
     // ALB security group — internet-facing
     this.albSecurityGroup = new ec2.SecurityGroup(this, "AlbSecurityGroup", {
       vpc: this.vpc,
       description: "Allow HTTP/HTTPS inbound to ALB",
       allowAllOutbound: true,
-    });
+    })
     this.albSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
       "Allow HTTP from anywhere"
-    );
+    )
     this.albSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(443),
       "Allow HTTPS from anywhere"
-    );
+    )
 
     // ECS security group — only accepts traffic from the ALB
     this.ecsSecurityGroup = new ec2.SecurityGroup(this, "EcsSecurityGroup", {
       vpc: this.vpc,
       description: "Allow inbound from ALB only",
       allowAllOutbound: true,
-    });
+    })
     this.ecsSecurityGroup.addIngressRule(
       this.albSecurityGroup,
       ec2.Port.tcp(8000),
       "Allow from ALB on container port 8000"
-    );
+    )
 
     // DB security group — only accepts traffic from ECS tasks
     this.dbSecurityGroup = new ec2.SecurityGroup(this, "DbSecurityGroup", {
       vpc: this.vpc,
       description: "Allow PostgreSQL from ECS tasks only",
       allowAllOutbound: false,
-    });
+    })
     this.dbSecurityGroup.addIngressRule(
       this.ecsSecurityGroup,
       ec2.Port.tcp(5432),
       "Allow PostgreSQL from ECS tasks"
-    );
+    )
   }
 }

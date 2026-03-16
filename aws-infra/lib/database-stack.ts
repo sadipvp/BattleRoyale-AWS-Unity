@@ -1,13 +1,13 @@
-import * as cdk from "aws-cdk-lib";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
-import * as rds from "aws-cdk-lib/aws-rds";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
-import { Construct } from "constructs";
+import * as cdk from "aws-cdk-lib"
+import * as ec2 from "aws-cdk-lib/aws-ec2"
+import * as rds from "aws-cdk-lib/aws-rds"
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb"
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager"
+import { Construct } from "constructs"
 
 interface DatabaseStackProps extends cdk.StackProps {
-  vpc: ec2.Vpc;
-  dbSecurityGroup: ec2.SecurityGroup;
+  vpc: ec2.Vpc
+  dbSecurityGroup: ec2.SecurityGroup
 }
 
 /**
@@ -27,19 +27,19 @@ interface DatabaseStackProps extends cdk.StackProps {
  * The ECS task definitions reference these secrets to inject DB_* env vars.
  */
 export class DatabaseStack extends cdk.Stack {
-  readonly authDbSecret: secretsmanager.ISecret;
-  readonly statsDbSecret: secretsmanager.ISecret;
-  readonly matchmakingTicketsTableName: string;
-  readonly matchmakingSessionsTableName: string;
+  readonly authDbSecret: secretsmanager.ISecret
+  readonly statsDbSecret: secretsmanager.ISecret
+  readonly matchmakingTicketsTableName: string
+  readonly matchmakingSessionsTableName: string
 
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
-    super(scope, id, props);
+    super(scope, id, props)
 
     // PRIVATE_ISOLATED: no NAT gateway in this VPC, so RDS instances use truly isolated
     // private subnets. They're only reachable from within the VPC (i.e., from Fargate tasks).
     const privateSubnets = {
       subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
-    };
+    }
 
     // ── Auth DB ────────────────────────────────────────────────────────────────
     const authDbSecret = new secretsmanager.Secret(this, "AuthDbSecret", {
@@ -51,28 +51,25 @@ export class DatabaseStack extends cdk.Stack {
         excludePunctuation: true,
         includeSpace: false,
       },
-    });
+    })
 
     const authDb = new rds.DatabaseInstance(this, "AuthDb", {
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_15,
       }),
-      instanceType: ec2.InstanceType.of(
-        ec2.InstanceClass.T3,
-        ec2.InstanceSize.MICRO
-      ),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
       credentials: rds.Credentials.fromSecret(authDbSecret),
       databaseName: "authdb",
       vpc: props.vpc,
       vpcSubnets: privateSubnets,
       securityGroups: [props.dbSecurityGroup],
       backupRetention: cdk.Duration.days(1),
-      deletionProtection: false,      // allow cdk destroy in course project
+      deletionProtection: false, // allow cdk destroy in course project
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      multiAz: false,                 // cost savings for course project
-    });
+      multiAz: false, // cost savings for course project
+    })
 
-    this.authDbSecret = authDbSecret;
+    this.authDbSecret = authDbSecret
 
     // ── Stats DB (reserved — stats service not yet implemented) ────────────────
     const statsDbSecret = new secretsmanager.Secret(this, "StatsDbSecret", {
@@ -84,16 +81,13 @@ export class DatabaseStack extends cdk.Stack {
         excludePunctuation: true,
         includeSpace: false,
       },
-    });
+    })
 
     const statsDb = new rds.DatabaseInstance(this, "StatsDb", {
       engine: rds.DatabaseInstanceEngine.postgres({
         version: rds.PostgresEngineVersion.VER_15,
       }),
-      instanceType: ec2.InstanceType.of(
-        ec2.InstanceClass.T3,
-        ec2.InstanceSize.MICRO
-      ),
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
       credentials: rds.Credentials.fromSecret(statsDbSecret),
       databaseName: "statsdb",
       vpc: props.vpc,
@@ -103,9 +97,9 @@ export class DatabaseStack extends cdk.Stack {
       deletionProtection: false,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       multiAz: false,
-    });
+    })
 
-    this.statsDbSecret = statsDbSecret;
+    this.statsDbSecret = statsDbSecret
 
     // ── DynamoDB: MatchmakingTickets ──────────────────────────────────────────
     // Stores in-flight matchmaking tickets. TTL auto-deletes after 1 hour.
@@ -118,7 +112,7 @@ export class DatabaseStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // no upfront cost
       timeToLiveAttribute: "expires_at",
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    })
 
     // ── DynamoDB: GameSessions ────────────────────────────────────────────────
     // Stores active game session connection info. TTL auto-deletes after 2 hours.
@@ -131,23 +125,23 @@ export class DatabaseStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "expires_at",
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    })
 
-    this.matchmakingTicketsTableName = ticketsTable.tableName;
-    this.matchmakingSessionsTableName = sessionsTable.tableName;
+    this.matchmakingTicketsTableName = ticketsTable.tableName
+    this.matchmakingSessionsTableName = sessionsTable.tableName
 
     // ── Outputs ────────────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, "AuthDbEndpoint", {
       value: authDb.dbInstanceEndpointAddress,
       description: "Auth RDS endpoint",
-    });
+    })
     new cdk.CfnOutput(this, "StatsDbEndpoint", {
       value: statsDb.dbInstanceEndpointAddress,
       description: "Stats RDS endpoint",
-    });
+    })
     new cdk.CfnOutput(this, "AuthDbSecretArn", {
       value: authDbSecret.secretArn,
       description: "ARN of auth DB credentials secret",
-    });
+    })
   }
 }

@@ -26,10 +26,13 @@ async def test_health(client):
 
 
 async def test_register_success(client):
-    resp = await client.post("/api/v1/register", json={
-        "username": "testuser",
-        "password": "password123",
-    })
+    resp = await client.post(
+        "/api/v1/register",
+        json={
+            "username": "testuser",
+            "password": "password123",
+        },
+    )
     assert resp.status_code == 201
     data = resp.json()
     assert data["username"] == "testuser"
@@ -45,51 +48,72 @@ async def test_register_duplicate_username(client):
 
 
 async def test_register_password_too_short(client):
-    resp = await client.post("/api/v1/register", json={
-        "username": "user1",
-        "password": "short",
-    })
+    resp = await client.post(
+        "/api/v1/register",
+        json={
+            "username": "user1",
+            "password": "short",
+        },
+    )
     assert resp.status_code == 422
 
 
 async def test_login_success(client):
-    await client.post("/api/v1/register", json={
-        "username": "loginuser",
-        "password": "password123",
-    })
-    resp = await client.post("/api/v1/login", json={
-        "username": "loginuser",
-        "password": "password123",
-    })
+    await client.post(
+        "/api/v1/register",
+        json={
+            "username": "loginuser",
+            "password": "password123",
+        },
+    )
+    resp = await client.post(
+        "/api/v1/login",
+        json={
+            "username": "loginuser",
+            "password": "password123",
+        },
+    )
     assert resp.status_code == 200
     assert "token" in resp.json()
 
 
 async def test_login_wrong_password(client):
-    await client.post("/api/v1/register", json={
-        "username": "loginuser2",
-        "password": "password123",
-    })
-    resp = await client.post("/api/v1/login", json={
-        "username": "loginuser2",
-        "password": "wrongpassword",
-    })
+    await client.post(
+        "/api/v1/register",
+        json={
+            "username": "loginuser2",
+            "password": "password123",
+        },
+    )
+    resp = await client.post(
+        "/api/v1/login",
+        json={
+            "username": "loginuser2",
+            "password": "wrongpassword",
+        },
+    )
     assert resp.status_code == 401
 
 
 async def test_login_unknown_user(client):
-    resp = await client.post("/api/v1/login", json={
-        "username": "nobody",
-        "password": "password123",
-    })
+    resp = await client.post(
+        "/api/v1/login",
+        json={
+            "username": "nobody",
+            "password": "password123",
+        },
+    )
     assert resp.status_code == 401
 
 
 async def test_me_with_valid_token(client):
-    reg = await client.post("/api/v1/register", json={
-        "username": "meuser",
-        "password": "password123",
-    })
+    reg = await client.post(
+        "/api/v1/register",
+        json={
+            "username": "meuser",
+            "password": "password123",
+        },
+    )
     token = reg.json()["token"]
     resp = await client.get("/api/v1/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200

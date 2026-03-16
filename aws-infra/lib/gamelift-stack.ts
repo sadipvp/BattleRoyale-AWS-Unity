@@ -1,8 +1,8 @@
-import * as cdk from "aws-cdk-lib";
-import * as gamelift from "aws-cdk-lib/aws-gamelift";
-import * as fs from "fs";
-import * as path from "path";
-import { Construct } from "constructs";
+import * as cdk from "aws-cdk-lib"
+import * as gamelift from "aws-cdk-lib/aws-gamelift"
+import * as fs from "fs"
+import * as path from "path"
+import { Construct } from "constructs"
 
 /**
  * GameLift stack: FlexMatch rule set, matchmaking configuration, and game session queue.
@@ -23,18 +23,18 @@ import { Construct } from "constructs";
  */
 export class GameLiftStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: cdk.StackProps) {
-    super(scope, id, props);
+    super(scope, id, props)
 
     const ruleSetBody = fs.readFileSync(
       path.join(__dirname, "../flexmatch/matchmaking-ruleset.json"),
       "utf-8"
-    );
+    )
 
     // FlexMatch rule set: 2-4 players per match (minPlayers: 2, maxPlayers: 4)
     const ruleSet = new gamelift.CfnMatchmakingRuleSet(this, "RuleSet", {
       name: "tank-battle-4v4-rules",
       ruleSetBody,
-    });
+    })
 
     // Game session queue — required by CfnMatchmakingConfiguration even before a fleet exists.
     // No destinations for now; add the fleet once it's deployed:
@@ -42,27 +42,23 @@ export class GameLiftStack extends cdk.Stack {
     const queue = new gamelift.CfnGameSessionQueue(this, "Queue", {
       name: "tank-battle-queue",
       timeoutInSeconds: 30,
-    });
+    })
 
     // FlexMatch matchmaking configuration.
     // The matchmaking service uses MOCK_GAMELIFT=true so this isn't called at runtime yet.
     // Once the fleet is deployed: set MOCK_GAMELIFT=false in the ECS matchmaking task definition.
-    const matchmakingConfig = new gamelift.CfnMatchmakingConfiguration(
-      this,
-      "MatchmakingConfig",
-      {
-        name: "tank-battle-4v4",
-        acceptanceRequired: false,
-        requestTimeoutSeconds: 30,
-        ruleSetName: ruleSet.name,
-        gameSessionQueueArns: [
-          `arn:aws:gamelift:${this.region}:${this.account}:gamesessionqueue/${queue.name}`,
-        ],
-      }
-    );
+    const matchmakingConfig = new gamelift.CfnMatchmakingConfiguration(this, "MatchmakingConfig", {
+      name: "tank-battle-4v4",
+      acceptanceRequired: false,
+      requestTimeoutSeconds: 30,
+      ruleSetName: ruleSet.name,
+      gameSessionQueueArns: [
+        `arn:aws:gamelift:${this.region}:${this.account}:gamesessionqueue/${queue.name}`,
+      ],
+    })
 
-    matchmakingConfig.addDependency(ruleSet);
-    matchmakingConfig.addDependency(queue);
+    matchmakingConfig.addDependency(ruleSet)
+    matchmakingConfig.addDependency(queue)
 
     // TODO: GameLift Fleet (requires Unity headless server build)
     // const fleet = new gamelift.CfnFleet(this, "Fleet", {
@@ -88,6 +84,6 @@ export class GameLiftStack extends cdk.Stack {
     new cdk.CfnOutput(this, "MatchmakingConfigName", {
       value: matchmakingConfig.name,
       description: "FlexMatch configuration name — set as FLEXMATCH_CONFIG_NAME env var",
-    });
+    })
   }
 }
