@@ -26,7 +26,7 @@ services:
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: devpassword
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - postgres_auth_data:/var/lib/postgresql/data
     healthcheck:

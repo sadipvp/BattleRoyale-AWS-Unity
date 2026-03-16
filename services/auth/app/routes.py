@@ -74,19 +74,21 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 @public_router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Verify credentials and return a JWT.
-
-    Returns 401 for unknown username or wrong password (same error to avoid
-    leaking which usernames exist).
-    """
     result = await db.execute(select(User).where(User.username == body.username))
     user = result.scalar_one_or_none()
 
-    # Constant-time comparison: always call bcrypt.verify even if user not found
-    # to prevent timing-based username enumeration
-    if user is None or not bcrypt.verify(body.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    # --- DEBUGGING DETALLADO ---
+    if user is None:
+        print(f"DEBUG: Usuario '{body.username}' no encontrado en la DB.")
+        raise HTTPException(status_code=401, detail="User not found")
+
+    password_correcta = bcrypt.verify(body.password, user.password_hash)
+    if not password_correcta:
+        print(f"DEBUG: Contraseña incorrecta para usuario '{body.username}'.")
+        # Imprime esto en los logs del contenedor para comparar
+        print(f"DEBUG: Recibido: '{body.password}', Hash en DB: '{user.password_hash}'")
+        raise HTTPException(status_code=401, detail="Wrong password")
+    # ---------------------------
 
     token = create_access_token(user.id, user.username)
     return TokenResponse(token=token)
