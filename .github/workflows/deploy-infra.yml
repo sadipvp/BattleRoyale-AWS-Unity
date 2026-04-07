@@ -2,10 +2,7 @@ name: Deploy — CDK Infrastructure
 
 # Triggers when CDK source or FlexMatch config changes on main.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'aws-infra/**'
+  workflow_dispatch:
 
 jobs:
   synth:
