@@ -101,8 +101,11 @@ services:
       DYNAMODB_ENDPOINT: http://dynamodb-local:8000
       DYNAMODB_TICKETS_TABLE: MatchmakingTickets
       DYNAMODB_SESSIONS_TABLE: GameSessions
-      # Skip real GameLift calls — returns fake ticket/connection info immediately
+      # Skip real GameLift calls — simulates matchmaking queue locally
       MOCK_GAMELIFT: "true"
+      MOCK_MIN_PLAYERS: "2"             # minimum players in queue to form a match
+      MOCK_TIMEOUT_SECONDS: "30"        # seconds before ticket times out with no match
+      MOCK_MATCH_DELAY_SECONDS: "3"     # simulated delay once min_players is met
       # boto3 requires credentials even for DynamoDB Local (values don't matter)
       AWS_ACCESS_KEY_ID: dummy
       AWS_SECRET_ACCESS_KEY: dummy

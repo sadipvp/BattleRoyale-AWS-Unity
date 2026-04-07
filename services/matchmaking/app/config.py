@@ -31,6 +31,10 @@ class Settings(BaseSettings):
 
     # Local dev mode — skip real GameLift API calls
     mock_gamelift: bool = False
+    # Queue simulation settings (only used when mock_gamelift=True)
+    mock_min_players: int = 2        # minimum players in queue before a match can form
+    mock_timeout_seconds: int = 30   # seconds before a ticket times out with no match
+    mock_match_delay_seconds: int = 3  # simulated negotiation delay once min_players is met
 
 
 settings = Settings()

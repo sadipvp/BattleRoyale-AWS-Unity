@@ -42,3 +42,7 @@ app.add_middleware(
 
 app.include_router(public_router)
 app.include_router(protected_router)
+
+if settings.mock_gamelift:
+    from app.mock_router import mock_router
+    app.include_router(mock_router)
