@@ -3,11 +3,7 @@ name: Deploy — Matchmaking Service
 # Triggers when matchmaking service code or the shared package changes on main.
 # Only rebuilds the matchmaking image, leaving auth untouched.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'services/matchmaking/**'
-      - 'services/shared/**'
+  workflow_dispatch:
 
 jobs:
   # Re-run lint, tests, and docker-build for the matchmaking service before deploying.

@@ -3,11 +3,7 @@ name: Deploy — Auth Service
 # Triggers when auth service code or the shared package changes on main.
 # Only rebuilds the auth image, leaving matchmaking untouched.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'services/auth/**'
-      - 'services/shared/**'
+  workflow_dispatch:
 
 jobs:
   # Re-run lint, tests, and docker-build for the auth service before deploying.
