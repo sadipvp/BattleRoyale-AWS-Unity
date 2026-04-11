@@ -1,8 +1,8 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using TMPro;
 using UnityEngine.UI;
 
-// 1. ESTA ES TU ESTRUCTURA DE DATOS (Limpia, sin MonoBehaviour)
 [System.Serializable]
 public class LoginData
 {
@@ -16,6 +16,9 @@ public class Login : MonoBehaviour
     [SerializeField] private TMP_InputField passwordInput;
     [SerializeField] private Button loginButton;
     [SerializeField] private TMP_Text feedbackText;
+
+    [System.Serializable]
+    private class LoginResponse { public string token; }
 
     private void Awake()
     {
@@ -33,16 +36,32 @@ public class Login : MonoBehaviour
             return;
         }
 
-        // 3. CREAMOS EL OBJETO USANDO LA CLASE LIMPIA
+        loginButton.interactable = false;
+        feedbackText.text = "Logging in...";
+
         LoginData dataParaEnviar = new LoginData();
         dataParaEnviar.username = userText;
         dataParaEnviar.password = passText;
 
-        // 4. CONVERTIMOS A JSON
         string jsonData = JsonUtility.ToJson(dataParaEnviar);
 
-        Debug.Log("JSON generado: " + jsonData); // Verifica que no salga {}
-
-        NetworkManager.Instance.EnviarJson("http://localhost:8001/api/v1/login", jsonData);
+        BackendClient.Instance.EnviarJson(
+            "http://localhost:8001/api/v1/login",
+            jsonData,
+            (success, response) =>
+            {
+                if (success)
+                {
+                    LoginResponse parsed = JsonUtility.FromJson<LoginResponse>(response);
+                    BackendClient.AuthToken = parsed.token;
+                    SceneManager.LoadScene("Lobby");
+                }
+                else
+                {
+                    feedbackText.text = "Login failed. Check your credentials.";
+                    loginButton.interactable = true;
+                }
+            }
+        );
     }
 }
