@@ -1,4 +1,4 @@
-# Tank Battle Royale - Final Project
+# Tank Battle Royale - Prototype 1
 
 This repository contains the full implementation of "Tank Battle Royale," a multiplayer game featuring its own Unity client, a Python microservices backend, and comprehensive Infrastructure as Code (IaC) deployed on AWS.
 
